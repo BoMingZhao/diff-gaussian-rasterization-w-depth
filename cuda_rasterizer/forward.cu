@@ -272,7 +272,9 @@ renderCUDA(
 	const float* __restrict__ bg_color,
 	float* __restrict__ out_color,
 	const float* __restrict__ depth,
-	float* __restrict__ out_depth)
+	float* __restrict__ out_depth,
+	int* __restrict__ tidx
+	)
 {
 	// Identify current tile and associated min/max pixel range.
 	auto block = cg::this_thread_block();
@@ -306,6 +308,7 @@ renderCUDA(
 	float C[CHANNELS] = { 0 };
 // 	float D = 0.0f;  // Mean Depth
     float D = 15.0f;  // Median Depth. TODO: This is a hack setting max_depth to 15
+	int tid = -1;
 
 	// Iterate over batches until all done or range is complete
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
@@ -369,6 +372,7 @@ renderCUDA(
 			{
 			    float dep = collected_depth[j];
 				D = dep;
+				tid = collected_id[j];
 			}
 
 
@@ -389,6 +393,7 @@ renderCUDA(
 		for (int ch = 0; ch < CHANNELS; ch++)
 			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
 		out_depth[pix_id] = D;
+		tidx[pix_id] = tid;
 	}
 }
 
@@ -405,7 +410,8 @@ void FORWARD::render(
 	const float* bg_color,
 	float* out_color,
 	const float* depth,
-	float* out_depth)
+	float* out_depth,
+	int* tidx)
 {
 	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
 		ranges,
@@ -419,7 +425,8 @@ void FORWARD::render(
 		bg_color,
 		out_color,
 		depth,
-		out_depth);
+		out_depth,
+		tidx);
 }
 
 void FORWARD::preprocess(int P, int D, int M,
